@@ -2541,7 +2541,7 @@ function rptTop5(doc,gameId,squadName,dateRange,crestB64,crestW,crestH,headshots
   rptSlideHeader(doc,'Match Day — Top 5',gameId.replace(/:.*$/,'').trim(),crestB64,crestW,crestH);
   rptSlideFooter(doc,'SPIRIT FC GPS REPORT',dateRange);
 
-  const rows=allData.filter(d=>d[RPT_COLS.evid]===gameId&&d[RPT_COLS.split]==='Full Game'&&d[RPT_COLS.pos]!=='GK'&&+d[RPT_COLS.mins]>=58);
+  const rows=allData.filter(d=>d[RPT_COLS.evid]===gameId&&d[RPT_COLS.split]==='Full Game'&&d[RPT_COLS.pos]!=='GK'&&+d[RPT_COLS.mins]>=0);
   const pm=new Map();
   rows.forEach(d=>{
     const p=d[RPT_COLS.player];if(!p)return;
@@ -3068,7 +3068,7 @@ async function generateReport(){
   const [oppDivB64,oppDivW,oppDivH]=await new Promise(r=>rptGetLogo(gameId,(b,w,h)=>r([b,w,h])));
 
   prog.textContent='Loading headshots…';
-  const topRows=allData.filter(d=>d[RPT_COLS.evid]===gameId&&d[RPT_COLS.split]==='Full Game'&&d[RPT_COLS.pos]!=='GK'&&+d[RPT_COLS.mins]>=58);
+  const topRows=allData.filter(d=>d[RPT_COLS.evid]===gameId&&d[RPT_COLS.split]==='Full Game'&&d[RPT_COLS.pos]!=='GK'&&+d[RPT_COLS.mins]>=0);
   const topPlayers=[...new Set(topRows.map(d=>d[RPT_COLS.player]).filter(Boolean))];
   const headshots={};
   await Promise.all(topPlayers.map(name=>new Promise(r=>{rptGetHeadshot(name,(b,w,h)=>{if(b)headshots[name]={b64:b,w,h};r();});})));
