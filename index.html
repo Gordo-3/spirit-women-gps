@@ -44,14 +44,14 @@
     .fs-hd{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1rem;cursor:pointer;user-select:none;transition:background .12s;}
     .fs-hd:hover{background:#1c1c1c;}
     .fs-hd-left{display:flex;align-items:center;gap:8px;}
-    .fs-hd-title{font-family:var(--font-d);font-size:11px;letter-spacing:.15em;color:var(--y);text-transform:uppercase;font-weight:700;}
+    .fs-hd-title{font-family:var(--font-d);font-size:13px;letter-spacing:.15em;color:var(--y);text-transform:uppercase;font-weight:700;}
     .fs-badge{background:var(--y);color:var(--blk);border-radius:10px;padding:1px 6px;font-family:var(--font-m);font-size:9px;font-weight:800;display:none;}
     .fs-badge.show{display:inline-block;}
     .fs-arrow{font-size:9px;color:#666;transition:transform .2s;}
     .fs-arrow.open{transform:rotate(180deg);}
     .fs-body{padding:0 1rem .9rem;display:none;}
     .fs-body.open{display:block;}
-    .sb-lbl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--fdl);margin-bottom:4px;margin-top:.6rem;display:block;}
+    .sb-lbl{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--fdl);margin-bottom:4px;margin-top:.6rem;display:block;}
     .sb-lbl:first-child{margin-top:0;}
     .sb-sel{width:100%;background:var(--fdi);border:1px solid var(--fdborder);border-radius:var(--r);color:var(--fdt);font-family:var(--font-b);font-size:13px;padding:7px 9px;cursor:pointer;appearance:none;}
     .sb-sel:focus{outline:none;border-color:var(--y);}
@@ -501,7 +501,7 @@
   <div class="fs-body open" id="body-date"><span class="sb-lbl">From</span><input class="sb-date" type="date" id="dateFrom" onchange="onCtxFilterChange()"><span class="sb-lbl">To</span><input class="sb-date" type="date" id="dateTo" onchange="onCtxFilterChange()"></div></div>
   <div class="fs" id="fs-event"><div class="fs-hd" onclick="toggleFs('event')"><div class="fs-hd-left"><span class="fs-hd-title">EVENT ID</span><span class="fs-badge" id="badge-event">✓</span></div><span class="fs-arrow open" id="arr-event">▾</span></div>
   <div class="fs-body open" id="body-event">
-    <div class="ck-ctrl"><button class="ck-cbtn" onclick="ckAll('evcb',true)">All</button><button class="ck-cbtn" onclick="ckAll('evcb',false)">None</button><button class="ck-cbtn ck-game" onclick="ckByTag('evcb','game')">Games</button><button class="ck-cbtn ck-training" onclick="ckByTag('evcb','training')">Training</button></div>
+    <div class="ck-ctrl"><button class="ck-cbtn" onclick="document.querySelectorAll('.evcb').forEach(c=>{c.checked=true;});onEvChange()">All</button><button class="ck-cbtn" onclick="ckAll('evcb',false)">None</button><button class="ck-cbtn ck-game" onclick="ckByTag('evcb','game')">Games</button><button class="ck-cbtn ck-training" onclick="ckByTag('evcb','training')">Training</button></div>
     <input class="ck-srch" type="text" id="evSrch" placeholder="Search events…" oninput="filterEvSb(this.value)">
     <div class="ck-list" id="evList"></div>
   </div></div>
@@ -1774,7 +1774,7 @@ function go(){
 
 /* PLAYER STATS */
 function playerStats(data,met){met=met||curMet;const pm={},mm={};data.forEach(d=>{const n=d["Player Full Name"];if(!n)return;const v=+d[met],m=+d["Mins Played"];if(!isNaN(v))pm[n]=(pm[n]||[]).concat(v);if(!isNaN(m))mm[n]=(mm[n]||[]).concat(m);});return Object.keys(pm).map(n=>{const vals=pm[n].filter(v=>!isNaN(v));const mins=mm[n]||[];const value=rkMode==="sum"?vals.reduce((a,b)=>a+b,0):vals.reduce((a,b)=>a+b,0)/vals.length;const minsVal=rkMode==="sum"?mins.reduce((a,b)=>a+b,0):mins.length?mins.reduce((a,b)=>a+b,0)/mins.length:0;const personalAvg=vals.reduce((a,b)=>a+b,0)/vals.length;return{n,value,mins:minsVal,personalAvg};}).sort((a,b)=>b.value-a.value);}
-function personalAvgAllTime(playerName,met){met=met||curMet;const vals=allData.filter(d=>d["Player Full Name"]===playerName).map(d=>+d[met]).filter(v=>!isNaN(v));return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;}
+function personalAvgAllTime(playerName,met){met=met||curMet;const splitFilter=selSplits.size===1&&selSplits.has("Full Game")?"Full Game":selSplits.size===1&&selSplits.has("Full Session")?"Full Session":null;const vals=allData.filter(d=>d["Player Full Name"]===playerName&&(!splitFilter||d["Split Name"]===splitFilter)).map(d=>+d[met]).filter(v=>!isNaN(v));return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;}
 function rollingAvg(evIds,valMap,dateMap,days=30){return evIds.map((id,i)=>{const ref=dateMap[id];if(!ref)return null;const cut=new Date(ref);cut.setDate(cut.getDate()-days);const wv=evIds.slice(0,i+1).filter(eid=>dateMap[eid]&&dateMap[eid]>=cut&&dateMap[eid]<=ref).map(eid=>valMap[eid]).filter(v=>v!=null);return wv.length?+(wv.reduce((a,b)=>a+b,0)/wv.length).toFixed(2):null;});}
 function linReg(vals){const n=vals.length;if(n<2)return null;let sx=0,sy=0,sxy=0,sx2=0;vals.forEach((y,x)=>{if(y===null)return;sx+=x;sy+=y;sxy+=x*y;sx2+=x*x;});const m=(n*sxy-sx*sy)/(n*sx2-sx*sx),b=(sy-m*sx)/n;return vals.map((_,x)=>+(m*x+b).toFixed(2));}
 function sortByDate(evIds){return evIds.sort((a,b)=>{const da=allData.find(x=>x["Event ID"]===a)?._date||0,db=allData.find(x=>x["Event ID"]===b)?._date||0;return da-db;});}
