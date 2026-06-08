@@ -1465,6 +1465,7 @@ function onDr(a,b){mMin=a;mMax=b;document.getElementById("drLbl").textContent=a+
 function onTrLine(a,b){trLineMin=a;trLineMax=b;document.getElementById("trLineLbl").textContent=a+" – "+b+" min";go();}
 function onTrRk(a,b){trRkMin=a;trRkMax=b;document.getElementById("trRkLbl").textContent=a+" – "+b+" min";go();}
 function initSliders(){
+  if(document.getElementById("drSlider").noUiSlider)return;
   noUiSlider.create(document.getElementById("drSlider"),{start:[0,120],connect:true,range:{min:0,max:120},step:1,tooltips:[{to:v=>Math.round(v)+"m"},{to:v=>Math.round(v)+"m"}]});
   document.getElementById("drSlider").noUiSlider.on("update",function(v){onDr(Math.round(+v[0]),Math.round(+v[1]));});
   noUiSlider.create(document.getElementById("trLineSlider"),{start:[60,120],connect:true,range:{min:0,max:120},step:1,tooltips:[{to:v=>Math.round(v)+"m"},{to:v=>Math.round(v)+"m"}]});
