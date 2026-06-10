@@ -4625,6 +4625,20 @@ const PR_METRIC_PHRASE = {
   'Hard Acc':'hard accelerations','Hard Dec':'hard decelerations',
   'Dives 3-5G':'lower-intensity dives','Dives 5-10G':'high-intensity dives'
 };
+// Radar metric columns/labels, shared by prRadarData and prSquadTopMetrics
+const PR_RADAR_METRICS = {
+  gk: { metrics:['Impact Zones: 3 - 5 G (Impacts)','Impact Zones: 5 - 10 G (Impacts)','HSR (m)','Hard Accelerations (#)','Hard Decelerations (#)'],
+        labels:['Dives 3-5G','Dives 5-10G','HSR','Hard Acc','Hard Dec'] },
+  outfield: { metrics:['Distance (km)','Work Rate (m/min)','Hard Accelerations (#)','Sprint Distance (m)','HSR (m)'],
+              labels:['Distance','Work Rate','Hard Acc','Sprint','HSR'] }
+};
+// Opening descriptor for prVerdict, keyed by the player's standout metric
+const PR_OPENER = {
+  'Distance':['A','high-volume'], 'Work Rate':['A','high-work-rate'],
+  'Sprint':['A','high-speed'], 'HSR':['A','high-speed'],
+  'Hard Acc':['An','explosive'], 'Hard Dec':['An','explosive'],
+  'Dives 3-5G':['A','high-volume'], 'Dives 5-10G':['An','explosive']
+};
 const PR_POS_LABEL = {
   'GK':'goalkeeper','CDEF':'centre-back','FBCK':'full-back','FB':'full-back',
   'CMID':'central midfielder','WMID':'wide midfielder','MID':'midfielder',
@@ -4658,12 +4672,7 @@ function prScore(row){
    squad-above average across ALL positions (so bars never go blank).        */
 function prIsRound(d){ var e=((d&&d['Event ID'])||'').trim(); return e.charAt(0).toUpperCase()==='R' && e.charAt(1)>='0' && e.charAt(1)<='9'; }
 function prRadarData(name, squad, position, isGK, compareTo){
-  const metrics = isGK
-    ? ['Impact Zones: 3 - 5 G (Impacts)','Impact Zones: 5 - 10 G (Impacts)','HSR (m)','Hard Accelerations (#)','Hard Decelerations (#)']
-    : ['Distance (km)','Work Rate (m/min)','Hard Accelerations (#)','Sprint Distance (m)','HSR (m)'];
-  const labels = isGK
-    ? ['Dives 3-5G','Dives 5-10G','HSR','Hard Acc','Hard Dec']
-    : ['Distance','Work Rate','Hard Acc','Sprint','HSR'];
+  const {metrics, labels} = isGK ? PR_RADAR_METRICS.gk : PR_RADAR_METRICS.outfield;
   const units  = isGK ? ['','','m','',''] : ['','','','m','m'];
   const dp     = isGK ? [0,0,0,0,0]       : [1,0,0,0,0];
 
@@ -4715,6 +4724,32 @@ function prRadarData(name, squad, position, isGK, compareTo){
            peerScope, peerCount: peerPlayers.length, posFallback };
 }
 
+/* Metric label(s) where a player ranks #1 in their own squad (raw value,
+   all positions), used to pick prVerdict's opening descriptor. */
+function prSquadTopMetrics(name, squad, isGK){
+  const {metrics, labels} = isGK ? PR_RADAR_METRICS.gk : PR_RADAR_METRICS.outfield;
+  const squadRows = allData.filter(d =>
+    prIsRound(d) &&
+    d['Squad']===squad &&
+    (d['Tags']||'').toLowerCase().trim()==='game' &&
+    d['Split Name']==='Full Game' &&
+    +d['Mins Played']>=45);
+  const players = [...new Set(squadRows.map(d=>d['Player Full Name']))];
+
+  let bestRank=Infinity, bestLabels=[];
+  metrics.forEach((col,i) => {
+    const ranked = players
+      .map(p => ({p, v: prAvg(squadRows.filter(d=>d['Player Full Name']===p), col)}))
+      .filter(o=>o.v!=null)
+      .sort((a,b)=>b.v-a.v);
+    const rank = ranked.findIndex(o=>o.p===name) + 1;
+    if(rank<1) return;
+    if(rank<bestRank){ bestRank=rank; bestLabels=[labels[i]]; }
+    else if(rank===bestRank){ bestLabels.push(labels[i]); }
+  });
+  return bestLabels;
+}
+
 const PR_PRIORITY_LABELS=['Distance','Work Rate','HSR'];
 function prVerdict(m){
   const L=m.radar.labels, you=m.radar.you, tgt=m.radar.target;
@@ -4735,7 +4770,14 @@ function prVerdict(m){
   const growthRow = prioBelow.length ? prioBelow[prioBelow.length-1]
     : (otherBelow.length ? otherBelow[otherBelow.length-1] : null);
   const growth = growthRow ? growthRow.p : null;
-  let s=`A high-volume ${POS} — ${strong[0]} and ${strong[1]} are real strengths.`;
+
+  // Opener: the squad's #1 metric for this player (tie-broken by their
+  // strongest metric vs. the peer benchmark), falling back to that
+  // peer-benchmark strength if they're not #1 in anything.
+  const squadTop = prSquadTopMetrics(m.name, m.squad, m.position==='GK');
+  const openerLabel = byR.map(o=>o.l).find(l=>squadTop.includes(l)) || squadTop[0] || byR[0].l;
+  const [openArt, openAdj] = PR_OPENER[openerLabel] || ['A','high-volume'];
+  let s=`${openArt} ${openAdj} ${POS} — ${strong[0]} and ${strong[1]} are real strengths.`;
   if(achieved.length>=4) s+=` Already performing at ${m.peerScope} level across the board.`;
   else if(achieved.length) s+=` Already matching the ${m.peerScope} on ${achieved.length>=3?'several metrics':prList(achieved.map(o=>o.p))}.`;
   s+= growth ? ` Clearest next step: closing toward the ${m.peerScope} on ${growth}.` : ` Ready to push for more.`;
