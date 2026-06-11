@@ -4676,12 +4676,12 @@ function prRadarData(name, squad, position, isGK, compareTo){
   const units  = isGK ? ['','','m','',''] : ['','','','m','m'];
   const dp     = isGK ? [0,0,0,0,0]       : [1,0,0,0,0];
 
-  const playerRows = prGetGameRows(name, 0).filter(prIsRound);
+  const playerRows = prGetGameRows(name, 25).filter(prIsRound);
   const you = metrics.map(m => prAvg(playerRows, m));
 
   // explicit comparison player chosen on export -> benchmark off their own season averages
   if(compareTo){
-    const cRows = prGetGameRows(compareTo, 0).filter(prIsRound);
+    const cRows = prGetGameRows(compareTo, 25).filter(prIsRound);
     const target = metrics.map(m => prAvg(cRows, m));
     return { labels, units, dp, you, target,
              peerScope: compareTo, peerCount: 1, posFallback:false, compareTo };
