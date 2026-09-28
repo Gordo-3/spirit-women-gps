@@ -4621,21 +4621,21 @@ const prResCol = r => r==='W'?PR_C.win : r==='L'?PR_C.loss : PR_C.draw;
 /* friendly labels for the verdict + positions (tweak to your taxonomy) */
 const PR_METRIC_PHRASE = {
   'Distance':'distance','Work Rate':'work rate','HSR':'high-speed running',
-  'Sprint':'sprint distance',
+  'Sprint':'sprint distance','Top Speed':'top speed',
   'Hard Acc':'hard accelerations','Hard Dec':'hard decelerations',
   'Dives 3-5G':'lower-intensity dives','Dives 5-10G':'high-intensity dives'
 };
 // Radar metric columns/labels, shared by prRadarData and prSquadTopMetrics
 const PR_RADAR_METRICS = {
-  gk: { metrics:['Impact Zones: 3 - 5 G (Impacts)','Impact Zones: 5 - 10 G (Impacts)','HSR (m)','Hard Accelerations (#)','Hard Decelerations (#)'],
-        labels:['Dives 3-5G','Dives 5-10G','HSR','Hard Acc','Hard Dec'] },
-  outfield: { metrics:['Distance (km)','Work Rate (m/min)','Hard Accelerations (#)','Sprint Distance (m)','HSR (m)'],
-              labels:['Distance','Work Rate','Hard Acc','Sprint','HSR'] }
+  gk: { metrics:['Impact Zones: 3 - 5 G (Impacts)','Impact Zones: 5 - 10 G (Impacts)','HSR (m)','Top Speed (km/h)','Hard Decelerations (#)'],
+        labels:['Dives 3-5G','Dives 5-10G','HSR','Top Speed','Hard Dec'] },
+  outfield: { metrics:['Distance (km)','Work Rate (m/min)','Top Speed (km/h)','Sprint Distance (m)','HSR (m)'],
+              labels:['Distance','Work Rate','Top Speed','Sprint','HSR'] }
 };
 // Opening descriptor for prVerdict, keyed by the player's standout metric
 const PR_OPENER = {
   'Distance':['A','high-volume'], 'Work Rate':['A','high-work-rate'],
-  'Sprint':['A','high-speed'], 'HSR':['A','high-speed'],
+  'Sprint':['A','high-speed'], 'HSR':['A','high-speed'], 'Top Speed':['A','high-speed'],
   'Hard Acc':['An','explosive'], 'Hard Dec':['An','explosive'],
   'Dives 3-5G':['A','high-volume'], 'Dives 5-10G':['An','explosive']
 };
@@ -4673,8 +4673,8 @@ function prScore(row){
 function prIsRound(d){ var e=((d&&d['Event ID'])||'').trim(); return e.charAt(0).toUpperCase()==='R' && e.charAt(1)>='0' && e.charAt(1)<='9'; }
 function prRadarData(name, squad, position, isGK, compareTo){
   const {metrics, labels} = isGK ? PR_RADAR_METRICS.gk : PR_RADAR_METRICS.outfield;
-  const units  = isGK ? ['','','m','',''] : ['','','','m','m'];
-  const dp     = isGK ? [0,0,0,0,0]       : [1,0,0,0,0];
+  const units  = isGK ? ['','','m','km/h',''] : ['','','km/h','m','m'];
+  const dp     = isGK ? [0,0,0,1,0]           : [1,0,1,0,0];
 
   const playerRows = prGetGameRows(name, 25).filter(prIsRound);
   const you = metrics.map(m => prAvg(playerRows, m));
@@ -4785,21 +4785,23 @@ function prVerdict(m){
 }
 function prList(a){ return a.length<=1?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
 
-/* Standout game = best combination of work rate AND total distance, each
-   normalized against the player's own season range — so a high-intensity
-   cameo can't outrank a full shift that was strong on both fronts. */
-function prStandoutGame(games){
+/* Best single game for one specific metric column (used to build the four
+   "standout game" rows — each metric can point at a different match). */
+function prBestGameForStat(games, col){
   if(!games.length) return null;
-  const wr=g=>+g['Work Rate (m/min)']||0, ds=g=>+g['Distance (km)']||0;
-  const wrMax=Math.max(...games.map(wr))||1, dsMax=Math.max(...games.map(ds))||1;
-  const score=g=> wr(g)/wrMax + ds(g)/dsMax;
-  return games.reduce((a,b)=> score(b)>score(a) ? b : a);
+  return games.reduce((a,b)=> (+b[col]||0) > (+a[col]||0) ? b : a);
+}
+function prRoundNum(evId){ const m=(evId||'').match(/^R\s*0*(\d+)/i); return m?m[1]:''; }
+/* Bold italic red uppercase callout with a bigger number, used under the
+   Total Distance tile (page 1) to make the Christie Park comparison pop
+   out from its parent stat box. */
+function prRedNote(prefix, num, suffix){
+  return `<div style="font-family:${PR_FB};font-size:7.5px;font-weight:700;font-style:italic;text-transform:uppercase;color:${PR_C.loss};margin-top:4px;line-height:1.3">${prefix?prefix+' ':''}<span style="font-size:10px;font-weight:800">${prNum(num)}</span>${suffix?' '+suffix:''}</div>`;
 }
 
 function prModel(name, compareTo){
   const squad=prGetPlayerSquad(name), position=prGetPlayerPosition(name), isGK=prIsGK(name);
   const games=prGetGameRows(name,0).filter(prIsRound), training=prGetTrainingRows(name);
-  const best = prStandoutGame(games);
 
   // three trend metrics (m1,m2,m3) — outfield vs GK
   const defs = isGK
@@ -4824,35 +4826,43 @@ function prModel(name, compareTo){
     unit: radar.units[i], dp: radar.dp[i]
   }));
 
-  const trainingStats = isGK
-    ? [ ['Sessions', [...new Set(training.map(d=>d['Event ID']))].length+''],
-        ['Total Distance', prNum(prSum(training,'Distance (km)'),1)+' km'],
-        ['Sum Dives 3-5G', prNum(prSum(training,'Impact Zones: 3 - 5 G (Impacts)'))],
-        ['Sum Dives 5-10G', prNum(prSum(training,'Impact Zones: 5 - 10 G (Impacts)'))],
-        ['Hard Acc', prNum(prSum(training,'Hard Accelerations (#)'))],
-        ['Hard Dec', prNum(prSum(training,'Hard Decelerations (#)'))] ]
-    : [ ['Sessions', [...new Set(training.map(d=>d['Event ID']))].length+''],
-        ['Total Distance', prNum(prSum(training,'Distance (km)'),1)+' km'],
-        ['Avg Work Rate', prNum(prAvg(training,'Work Rate (m/min)'),1)+' m/min'],
-        ['Sum HSR', prNum(prSum(training,'HSR (m)'))+' m'],
-        ['Sum Sprint', prNum(prSum(training,'Sprint Distance (m)'))+' m'],
-        ['Hard Acc', prNum(prSum(training,'Hard Accelerations (#)'))],
-        ['Hard Dec', prNum(prSum(training,'Hard Decelerations (#)'))] ];
+  const trainTopSpeed = prPeak(training,'Top Speed (km/h)');
 
-  let bestObj=null;
-  if(best){
-    const sc=prScore(best), nm=prOppName(best['Event ID']);
-    bestObj = { evId:best['Event ID'], oppFull:nm||'Opposition', code:prOppCode(nm), logoB64:null,
-      dateStr: best._date?fmtDate(best._date):'', mins:Math.round(+best['Mins Played']||0),
-      result:sc.result, score:sc.score,
-      stats: isGK
-        ? [['Dives', prNum((+best['Impact Zones: 3 - 5 G (Impacts)']||0)+(+best['Impact Zones: 5 - 10 G (Impacts)']||0))],
-           ['Hard Acc', prNum(+best['Hard Accelerations (#)'])],['Hard Dec', prNum(+best['Hard Decelerations (#)'])],
-           ['HSR', prNum(+best['HSR (m)'])+'m']]
-        : [['Dist', prNum(+best['Distance (km)'],1)+'km'],['Work Rate', prNum(+best['Work Rate (m/min)'],1)],
-           ['HSR', prNum(+best['HSR (m)'])+'m'],['Hard Acc', prNum(+best['Hard Accelerations (#)'])],
-           ['Hard Dec', prNum(+best['Hard Decelerations (#)'])]] };
-  }
+  const trainingStats = isGK
+    ? [ ['GPS Worn Sessions', [...new Set(training.map(d=>d['Event ID']))].length+''],
+        ['Total Distance Recorded', prNum(prSum(training,'Distance (km)'),1)+' km'],
+        ['Total Dives 3-5G Recorded', prNum(prSum(training,'Impact Zones: 3 - 5 G (Impacts)'))],
+        ['Total Dives 5-10G Recorded', prNum(prSum(training,'Impact Zones: 5 - 10 G (Impacts)'))],
+        ['Training Top Speed Recorded (km/h)', prNum(trainTopSpeed,1)] ]
+    : [ ['GPS Worn Sessions', [...new Set(training.map(d=>d['Event ID']))].length+''],
+        ['Total Distance Recorded', prNum(prSum(training,'Distance (km)'),1)+' km'],
+        ['Avg Work Rate Recorded', prNum(prAvg(training,'Work Rate (m/min)'),1)+' m/min'],
+        ['Total HSR Recorded', prNum(prSum(training,'HSR (m)')/1000,1)+' km'],
+        ['Total Sprint Recorded', prNum(prSum(training,'Sprint Distance (m)'))+' m'],
+        ['Training Top Speed Recorded (km/h)', prNum(trainTopSpeed,1)] ];
+
+  /* Standout games — one best game per headline metric, each can be a
+     different match against a different opponent. */
+  // Work Rate is an average (m/min), so a short high-intensity cameo can
+  // outscore a full shift — same age-group minutes floor used elsewhere
+  // (prBestGame) keeps the pick to games that are actually representative.
+  const standoutMinMins = ['WYL 14','WYL 15','WYL 16'].includes(squad) ? 45 : 55;
+  const STANDOUT_DEFS = [
+    {label:'Total Distance', col:'Distance (km)', dp:1, unit:'km'},
+    {label:'Work Rate',      col:'Work Rate (m/min)', dp:1, unit:' m/min', minMins:standoutMinMins},
+    {label:'HSR',            col:'HSR (m)', dp:0, unit:'m'},
+    {label:'Top Speed',      col:'Top Speed (km/h)', dp:1, unit:' km/h'}
+  ];
+  const bestByStat = STANDOUT_DEFS.map(def=>{
+    const pool = def.minMins ? games.filter(g=>+g['Mins Played']>=def.minMins) : games;
+    const g = prBestGameForStat(pool, def.col);
+    if(!g) return null;
+    const nm=prOppName(g['Event ID']);
+    return { label:def.label, value: prNum(+g[def.col],def.dp)+def.unit,
+      evId:g['Event ID'], oppFull:nm||'Opposition', code:prOppCode(nm), logoB64:null,
+      round: prRoundNum(g['Event ID']), dateStr: g._date?fmtDate(g._date):'',
+      mins: Math.round(+g['Mins Played']||0) };
+  });
 
   const parts=name.trim().split(/\s+/);
   const m = {
@@ -4861,13 +4871,12 @@ function prModel(name, compareTo){
     jersey:getJerseyNumber(name)||'',
     seasonLabel:'Season 2025/26',  // <-- set your season label here if you track it
     dateRange: prDateRangeSafe(games),
-    genDate: new Date().toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}),
     crestB64:null,
     games: games.length, totalMins: Math.round(prSum(games,'Mins Played')||0),
     totalDistance: prSum(games,'Distance (km)')||0,
-    topSpeed: prPeak(games,'Top Speed (km/h)')||0, topSpeedPB:true,
+    totalHSR: (prSum(games,'HSR (m)')||0) + (prSum(training,'HSR (m)')||0),
     gamesNote: games.length+' games recorded',
-    best:bestObj, series, trendDefs:defs,
+    bestByStat, series, trendDefs:defs,
     radar, progress, training:trainingStats,
     peerScope: radar.peerScope, peerCount: radar.peerCount
   };
@@ -4902,9 +4911,6 @@ function prTrendChart(p){
   const linePts=vals.map((v,i)=>`${xP(i).toFixed(1)},${yP(v).toFixed(1)}`);
   const ay=yP(avg);
   const avgDash=`<line x1="${axL}" y1="${ay.toFixed(1)}" x2="${x1}" y2="${ay.toFixed(1)}" stroke="${p.color}" stroke-width="1.2" stroke-dasharray="5,4" opacity=".5"/>`;
-  const avgTxt='avg '+prNum(avg,p.dp), aw=avgTxt.length*4.7+9;
-  const avgPill=`<rect x="${(x1-aw).toFixed(1)}" y="${(ay-7).toFixed(1)}" width="${aw.toFixed(1)}" height="14" rx="3" fill="${PR_C.card}" stroke="${PR_C.hair}" stroke-width="1"/>
-    <text x="${(x1-4).toFixed(1)}" y="${(ay+3).toFixed(1)}" text-anchor="end" font-family="${PR_FB}" font-weight="700" font-size="8.5" fill="${p.color}">${avgTxt}</text>`;
   // top-3 games by this metric -> medals
   const rank={}; vals.map((v,i)=>({v,i})).sort((a,b)=>b.v-a.v).slice(0,3).forEach((o,r)=>{rank[o.i]=r;});
   const MED=['🥇','🥈','🥉'], MBG=[PR_C.y,'#cfd0d6','#cd8a52'], MTX=['#111','#111','#fff'];
@@ -4912,7 +4918,7 @@ function prTrendChart(p){
   // value labels at the dots (alternate above/below; medal chips for top-3)
   const valueMarks=vals.map((v,i)=>{const x=xP(i),py=yP(v),md=rank[i];
     let ly=(i%2===0)?py-12:py+16; if(ly<13)ly=py+16; if(ly>bot)ly=py-12;
-    if(md!=null){const t=MED[md]+' '+prNum(v,p.dp), cw=t.length*4.0+13;
+    if(md!=null){const numStr=prNum(v,p.dp), t=MED[md]+' '+numStr, cw=numStr.length*4.0+16;
       return `<rect x="${(x-cw/2).toFixed(1)}" y="${(ly-10).toFixed(1)}" width="${cw.toFixed(1)}" height="13" rx="3" fill="${MBG[md]}"/>
         <text x="${x.toFixed(1)}" y="${(ly-0.6).toFixed(1)}" text-anchor="middle" font-family="${PR_FB}" font-size="7.5" font-weight="700" fill="${MTX[md]}">${t}</text>`;}
     return `<text x="${x.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-family="${PR_FB}" font-size="7.3" font-weight="700" fill="${PR_C.ink2}">${prNum(v,p.dp)}</text>`;}).join('');
@@ -4930,7 +4936,7 @@ function prTrendChart(p){
     <defs><linearGradient id="g${p.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.color}" stop-opacity=".16"/><stop offset="1" stop-color="${p.color}" stop-opacity="0"/></linearGradient></defs>
     ${grid}<path d="M${axL},${bot} L${linePts.join(' L')} L${x1},${bot} Z" fill="url(#g${p.id})"/>${avgDash}
     <path d="M${linePts.join(' L')}" fill="none" stroke="${p.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
-    ${dots}${valueMarks}${avgPill}${axis}
+    ${dots}${valueMarks}${axis}
     <text x="1" y="${(mvy-4).toFixed(1)}" text-anchor="start" font-family="${PR_FB}" font-size="5.5" font-weight="600" letter-spacing=".02em" fill="${PR_C.dim}">MINS</text>
     <text x="1" y="${(mvy+4).toFixed(1)}" text-anchor="start" font-family="${PR_FB}" font-size="5.5" font-weight="600" letter-spacing=".02em" fill="${PR_C.dim}">RECORDED</text></svg>`;
 }
@@ -4978,7 +4984,7 @@ function prMasthead(m,section){
 }
 function prFooter(m,pageStr){
   return `<div style="flex:0 0 26px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-top:1px solid ${PR_C.hair};font-family:${PR_FB};font-size:8px;font-weight:500;color:${PR_C.dim};letter-spacing:.09em;text-transform:uppercase">
-    <span>Private &amp; Confidential — Spirit FC Performance</span><span>${m.name} · ${pageStr} · Generated ${m.genDate}</span></div>`;
+    <span>SPIRIT FC ATHLETIC PERFORMANCE — CREATED BY GORDON ALLAN, HEAD OF STRENGTH &amp; CONDITIONING</span><span>${m.name} · ${pageStr}</span></div>`;
 }
 
 /* ============================================================================
@@ -4989,35 +4995,54 @@ function prRenderPage1(m){
     const rows=m.series.map(g=>({val:g[def.key],code:g.code,logoB64:g.logoB64,result:g.result,score:g.score,mins:g.mins}));
     const avg=prMean(rows.map(r=>r.val));
     return `<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};border-radius:10px;box-shadow:${PR_C.sh};padding:10px 14px 4px;flex:1;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:1px">
-        <span style="font-family:${PR_FB};font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${PR_C.mut}">${def.label}</span>
-        <span style="font-family:${PR_FD};font-size:22px;line-height:.8;color:${def.color}">${prNum(avg,def.dp)}</span>
-        <span style="font-family:${PR_FB};font-size:9px;color:${PR_C.dim}">${def.unit} · season avg</span></div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:11px;margin-bottom:1px">
+        <div style="display:flex;align-items:baseline;gap:11px">
+          <span style="font-family:${PR_FB};font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${PR_C.mut}">${def.label}</span>
+          <span style="font-family:${PR_FD};font-size:22px;line-height:.8;color:${def.color}">${prNum(avg,def.dp)}</span>
+          <span style="font-family:${PR_FB};font-size:9px;color:${PR_C.dim}">${def.unit} · season avg</span>
+        </div>
+        <span style="font-family:${PR_FB};font-size:8.5px;font-weight:700;color:${def.color};background:${PR_C.card};border:1px solid ${PR_C.hair};border-radius:3px;padding:2px 7px;flex:0 0 auto">avg ${prNum(avg,def.dp)}</span>
+      </div>
       ${prTrendChart({id:def.key,color:def.color,dp:def.dp,rows})}</div>`;
   };
-  const tiles=[['Games',m.games,false],['Minutes',prNum(m.totalMins),false],['Total Distance',prNum(m.totalDistance,1)+'km',false],['Top Speed',prNum(m.topSpeed,1),m.topSpeedPB]]
-    .map(([l,v,pb])=>`<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};border-radius:8px;box-shadow:${PR_C.sh};padding:9px 11px">
+  const lapCount = Math.round((m.totalDistance||0) * 1000 / 100);
+  const tiles=[
+      ['Games Recorded', m.games, false, null],
+      ['Minutes Recorded', prNum(m.totalMins), false, null],
+      ['Total Distance Recorded', prNum(m.totalDistance,1)+' km', false,
+        lapCount>0 ? prRedNote('Covering the length of Christie Park Field 1:', lapCount, 'times') : null],
+      ['Total HSR Recorded', prNum(m.totalHSR/1000,1)+' km', false, null]
+    ]
+    .map(([l,v,pb,note])=>`<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};border-radius:8px;box-shadow:${PR_C.sh};padding:9px 11px">
       <div style="font-family:${PR_FB};font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${PR_C.mut}">${l}</div>
       <div style="display:flex;align-items:baseline;gap:5px"><span style="font-family:${PR_FD};font-size:27px;line-height:1;color:${PR_C.ink}">${v}</span>
-        ${pb?`<span style="font-family:${PR_FB};font-size:7.5px;font-weight:700;background:${PR_C.y};color:#111;border-radius:3px;padding:1px 4px">PB</span>`:''}</div></div>`).join('');
+        ${pb?`<span style="font-family:${PR_FB};font-size:7.5px;font-weight:700;background:${PR_C.y};color:#111;border-radius:3px;padding:1px 4px">PB</span>`:''}</div>
+        ${note||''}</div>`).join('');
 
-  const b=m.best;
-  const bgCard = b ? `<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};box-shadow:${PR_C.sh};border-radius:9px;padding:11px 12px;border-left:3px solid ${PR_C.y}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-family:${PR_FD};font-size:10px;letter-spacing:.06em;color:${PR_C.ink}">STANDOUT GAME · ATHLETIC PERFORMANCE</span>
-        ${(b.result||b.score)?`<span style="font-family:${PR_FB};font-size:11px;font-weight:700;color:${prResCol(b.result)}">${b.score} ${b.result}</span>`:''}</div>
-      <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
-        ${b.logoB64?`<img src="${b.logoB64}" style="width:30px;height:30px;object-fit:contain">`:`<div style="width:30px;height:30px;border-radius:6px;background:${PR_C.inset};border:1px solid ${PR_C.hair};display:flex;align-items:center;justify-content:center;font-family:${PR_FB};font-size:8.5px;font-weight:700;color:${PR_C.mut}">${b.code}</div>`}
-        <div><div style="font-family:${PR_FB};font-size:12px;font-weight:700;color:${PR_C.ink};line-height:1.1">vs ${b.oppFull}</div>
-          <div style="font-family:${PR_FB};font-size:8.5px;font-weight:500;color:${PR_C.mut};margin-top:1px">${b.dateStr} · ${b.mins}′ played</div></div></div>
-      <div style="display:grid;grid-template-columns:repeat(${b.stats.length},1fr);gap:4px">${b.stats.map(([l,v])=>`<div style="text-align:center"><div style="font-family:${PR_FB};font-size:6.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:${PR_C.dim}">${l}</div><div style="font-family:${PR_FD};font-size:14px;color:${PR_C.ink};line-height:1.1">${v}</div></div>`).join('')}</div></div>` : '';
+  const statRows = (m.bestByStat||[]).filter(Boolean).map(s=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid ${PR_C.hair}">
+        <div style="min-width:0">
+          <div style="font-family:${PR_FB};font-size:7px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${PR_C.mut}">${s.label}</div>
+          <div style="font-family:${PR_FD};font-size:19px;color:${PR_C.ink};line-height:1.15;margin-top:1px">${s.value}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;flex:0 0 auto">
+          ${s.logoB64?`<svg width="26" height="26" viewBox="0 0 26 26" style="flex:0 0 auto"><image href="${s.logoB64}" xlink:href="${s.logoB64}" x="0" y="0" width="26" height="26" preserveAspectRatio="xMidYMid meet"/></svg>`:`<div style="width:26px;height:26px;border-radius:5px;background:${PR_C.inset};border:1px solid ${PR_C.hair};flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:${PR_FB};font-size:6.5px;font-weight:700;color:${PR_C.mut}">${s.code}</div>`}
+          <div style="text-align:right;min-width:0">
+            <div style="font-family:${PR_FB};font-size:8px;font-weight:700;color:${PR_C.ink};white-space:nowrap">R${s.round||'—'} vs ${s.code}</div>
+            <div style="font-family:${PR_FB};font-size:7px;color:${PR_C.dim};margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px">${s.oppFull}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  const bgCard = statRows ? `<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};box-shadow:${PR_C.sh};border-radius:9px;padding:11px 13px;border-left:3px solid ${PR_C.y}">
+      <div><span style="font-family:${PR_FD};font-size:10px;letter-spacing:.06em;color:${PR_C.ink}">STANDOUT GAMES · ATHLETIC PERFORMANCE</span></div>
+      ${statRows}</div>` : '';
 
-  const initials = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-family:${PR_FD};font-size:108px;color:${PR_C.ink};opacity:.9">${(m.firstName[0]||'')}${(m.surname[0]||'')}</span></div>`;
+  const initials = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-family:${PR_FD};font-size:79px;color:${PR_C.ink};opacity:.9">${(m.firstName[0]||'')}${(m.surname[0]||'')}</span></div>`;
   const kit = m.kitB64
     ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
          <div style="position:relative;width:82%;height:82%">
            <div style="position:absolute;inset:0;background-image:url('${m.kitB64}');background-size:contain;background-position:center;background-repeat:no-repeat"></div>
-           <span style="position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);font-family:${PR_FD};font-size:58px;color:${PR_C.ink};opacity:.95">${m.jersey||''}</span>
+           <span style="position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);font-family:${PR_FD};font-size:42px;color:${PR_C.ink};opacity:.95">${m.jersey||''}</span>
          </div></div>`
     : initials;
 
@@ -5025,15 +5050,15 @@ function prRenderPage1(m){
     ${prMasthead(m,'ATHLETIC PERFORMANCE REVIEW · GPS')}
     <div style="flex:1;display:flex;min-height:0">
       <div style="width:332px;flex:0 0 332px;background:${PR_C.bg};border-right:1px solid ${PR_C.hair};padding:18px;display:flex;flex-direction:column;gap:13px">
-        <div style="position:relative;height:226px;border-radius:12px;overflow:hidden;border:1px solid ${PR_C.hair};background:radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #e9e8e1 100%)">
-          <span style="position:absolute;right:-6px;bottom:-34px;font-family:${PR_FD};font-size:168px;color:${PR_C.ghost};line-height:1">${m.jersey}</span>${kit}
-          <div style="position:absolute;top:11px;left:11px;font-family:${PR_FB};font-size:9px;font-weight:700;letter-spacing:.06em;background:${PR_C.ink};color:${PR_C.y};border-radius:4px;padding:3px 7px">${m.posShort}</div>
-          <div style="position:absolute;top:11px;right:11px;font-family:${PR_FB};font-size:9px;font-weight:600;letter-spacing:.04em;color:${PR_C.mut};background:rgba(255,255,255,.85);border:1px solid ${PR_C.hair};border-radius:4px;padding:3px 7px">${m.squad}</div></div>
+        <div style="position:relative;height:165px;border-radius:12px;overflow:hidden;border:1px solid ${PR_C.hair};background:radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #e9e8e1 100%)">
+          <span style="position:absolute;right:-4px;bottom:-25px;font-family:${PR_FD};font-size:123px;color:${PR_C.ghost};line-height:1">${m.jersey}</span>${kit}
+          <div style="position:absolute;top:9px;left:9px;font-family:${PR_FB};font-size:8px;font-weight:700;letter-spacing:.06em;background:${PR_C.ink};color:${PR_C.y};border-radius:4px;padding:2px 6px">${m.posShort}</div>
+          <div style="position:absolute;top:9px;right:9px;font-family:${PR_FB};font-size:8px;font-weight:600;letter-spacing:.04em;color:${PR_C.mut};background:rgba(255,255,255,.85);border:1px solid ${PR_C.hair};border-radius:4px;padding:2px 6px">${m.squad}</div></div>
         <div><div style="width:30px;height:4px;background:${PR_C.y};border-radius:1px;margin-bottom:7px"></div>
           <div style="font-family:${PR_FD};font-size:40px;line-height:.86;color:${PR_C.ink}">${m.firstName}</div>
           <div style="font-family:${PR_FD};font-size:40px;line-height:.9;color:${PR_C.ink2}">${m.surname}</div>
           <div style="font-family:${PR_FB};font-size:10px;font-weight:500;color:${PR_C.mut};margin-top:5px;letter-spacing:.02em">${m.position} · #${m.jersey} · ${m.gamesNote}</div></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${tiles}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:start">${tiles}</div>
         ${bgCard}
         <div style="margin-top:auto">${prCrest(m,18,false)}</div></div>
       <div style="flex:1;min-width:0;padding:16px 20px;display:flex;flex-direction:column;gap:9px">
@@ -5059,9 +5084,10 @@ function prRenderPage2(m){
     : m.radar.posFallback
     ? `What a typical ${m.peerScope} player produces — your targets for next season. Each bar shows how close you already are.`
     : `What a typical ${m.position} produces in the ${m.peerScope} — your targets for next season. Each bar shows how close you already are.`;
-  const training=m.training.map(([l,v])=>`<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};box-shadow:${PR_C.sh};border-radius:9px;padding:12px 13px">
+  const training=m.training.map(([l,v,note])=>`<div style="background:${PR_C.card};border:1px solid ${PR_C.hair};box-shadow:${PR_C.sh};border-radius:9px;padding:12px 13px">
       <div style="font-family:${PR_FB};font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${PR_C.mut}">${l}</div>
-      <div style="font-family:${PR_FD};font-size:28px;line-height:1.05;color:${PR_C.ink};margin-top:2px">${v}</div></div>`).join('');
+      <div style="font-family:${PR_FD};font-size:28px;line-height:1.05;color:${PR_C.ink};margin-top:2px">${v}</div>
+      ${note||''}</div>`).join('');
 
   return `<div style="width:1122px;height:794px;background:${PR_C.bg};font-family:${PR_FB};display:flex;flex-direction:column">
     ${prMasthead(m,'PROFILE & DEVELOPMENT')}
@@ -5093,7 +5119,7 @@ async function prBuildPage1HTML(playerName, crestB64, compareTo){
     Promise.all(m.series.map(g => prLogoP(g.evId).then(b => { g.logoB64 = b; })))
   ]);
   m.kitB64 = kit;
-  if(m.best) m.best.logoB64 = await prLogoP(m.best.evId);
+  if(m.bestByStat) await Promise.all(m.bestByStat.filter(Boolean).map(async s => { s.logoB64 = await prLogoP(s.evId); }));
   return prRenderPage1(m);
 }
 function prBuildPage2HTML(playerName, crestB64, compareTo){
@@ -5129,7 +5155,7 @@ async function prRenderPageToPDF(doc, html, pageIndex) {
     width: 1122, windowWidth: 1122, backgroundColor: '#111111'
   });
   if (pageIndex > 0) doc.addPage([297,210], 'landscape');
-  doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 297, 210);
+  doc.addImage(canvas.toDataURL('image/jpeg', 0.97), 'JPEG', 0, 0, 297, 210);
   zone.innerHTML = '';
 }
 
